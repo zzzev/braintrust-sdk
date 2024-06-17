@@ -238,6 +238,7 @@ export class BraintrustState {
   public logUrl: string | null = null;
   public loggedIn: boolean = false;
   public gitMetadataSettings?: GitMetadataSettings;
+  public fetch: typeof fetch = fetch;
 
   private _apiConn: HTTPConnection | null = null;
   private _logConn: HTTPConnection | null = null;
@@ -429,7 +430,7 @@ class HTTPConnection {
     ).toString();
     return await checkResponse(
       // Using toString() here makes it work with isomorphic fetch
-      await fetch(url.toString(), {
+      await _globalState.fetch(url.toString(), {
         headers: {
           Accept: "application/json",
           ...this.headers,
@@ -448,7 +449,7 @@ class HTTPConnection {
   ) {
     const { headers, ...rest } = config || {};
     return await checkResponse(
-      await fetch(_urljoin(this.base_url, path), {
+      await _globalState.fetch(_urljoin(this.base_url, path), {
         method: "POST",
         headers: {
           Accept: "application/json",
@@ -1842,6 +1843,7 @@ type InitLoggerOptions<IsAsyncFlush> = {
   forceLogin?: boolean;
   setCurrent?: boolean;
   state?: BraintrustState;
+  customFetch?: typeof fetch;
 } & AsyncFlushArg<IsAsyncFlush>;
 
 /**
@@ -1871,6 +1873,7 @@ export function initLogger<IsAsyncFlush extends boolean = false>(
     orgName,
     forceLogin,
     state: stateArg,
+    customFetch,
   } = options || {};
 
   const computeMetadataArgs = {
@@ -1878,6 +1881,9 @@ export function initLogger<IsAsyncFlush extends boolean = false>(
     project_id: projectId,
   };
   const state = stateArg ?? _globalState;
+  if (customFetch) {
+    state.fetch = customFetch
+  }
   const lazyMetadata: LazyValue<OrgProjectMetadata> = new LazyValue(
     async () => {
       await state.login({
@@ -2063,8 +2069,11 @@ export async function loginToState(options: LoginOptions = {}) {
   let conn = null;
 
   if (apiKey !== undefined) {
+    if (_globalState.appUrl === null)  {
+      throw new Error('Expected App URL to be defined at login')
+    }
     const resp = await checkResponse(
-      await fetch(_urljoin(state.appUrl, `/api/apikey/login`), {
+      await _globalState.fetch(_urljoin(_globalState.appUrl, `/api/apikey/login`), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
